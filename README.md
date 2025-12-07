@@ -83,7 +83,7 @@ copy .env.example .env
 ```bash
 # 终端1：启动 LangGraph 后端服务器
 cd src
-langgraph serve
+langgraph dev
 
 # 终端2：启动前端开发服务器
 cd agent-chat-ui
