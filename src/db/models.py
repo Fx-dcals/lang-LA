@@ -21,10 +21,12 @@ class LearningPoint:
             sql = """
                 INSERT INTO learning_points (thread_id, topic, difficulty_level, notes)
                 VALUES (%s, %s, %s, %s)
+                RETURNING id
             """
             cursor.execute(sql, (thread_id, topic, difficulty_level, notes))
+            result = cursor.fetchone()
             conn.commit()
-            return cursor.lastrowid
+            return result['id']
     
     @staticmethod
     def get_by_thread_id(thread_id: str) -> List[Dict]:
@@ -104,5 +106,22 @@ class LearningPoint:
                 LIMIT %s
             """
             cursor.execute(sql, (thread_id, limit))
+            return cursor.fetchall()
+    
+    @staticmethod
+    def get_all_sessions() -> List[Dict]:
+        """获取所有有学习记录的会话列表"""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            sql = """
+                SELECT thread_id, 
+                       COUNT(*) as record_count,
+                       MIN(created_at) as first_record,
+                       MAX(created_at) as last_record
+                FROM learning_points
+                GROUP BY thread_id
+                ORDER BY last_record DESC
+            """
+            cursor.execute(sql)
             return cursor.fetchall()
 

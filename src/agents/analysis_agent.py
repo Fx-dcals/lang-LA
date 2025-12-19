@@ -17,6 +17,22 @@ except ImportError:
 
 
 @tool
+def list_all_sessions() -> str:
+    """
+    列出所有有学习记录的会话，返回会话ID、记录数量、首次和最后记录时间。
+    用户可以通过这个工具查看有哪些会话可供分析。
+    """
+    try:
+        if LearningPoint is None:
+            return json.dumps({"error": "数据库模块未配置"}, ensure_ascii=False)
+        
+        sessions = LearningPoint.get_all_sessions()
+        return json.dumps(sessions, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": f"获取会话列表失败: {str(e)}"}, ensure_ascii=False)
+
+
+@tool
 def get_learning_statistics(thread_id: str) -> str:
     """
     获取指定线程的学习统计信息，包括总记录数、难度分布、常见困惑点等。
@@ -147,21 +163,20 @@ def analyze_learning_patterns(thread_id: str) -> str:
             elif not isinstance(created_at, datetime):
                 continue
             
-            if isinstance(created_at, datetime):
-                if created_at.tzinfo is not None:
-                    created_at = created_at.replace(tzinfo=None)
-                if (now - created_at).days <= 7:
-                    recent_count += 1
+            if created_at.tzinfo is not None:
+                created_at = created_at.replace(tzinfo=None)
+            if (now - created_at).days <= 7:
+                recent_count += 1
         
         analysis = {
-            "total_points": len(all_points),
-            "difficulty_distribution": {
-                "hard": len(hard_points),
-                "medium": len(medium_points),
-                "easy": len(easy_points)
-            },
+                "total_points": len(all_points),
+                "difficulty_distribution": {
+                    "hard": len(hard_points),
+                    "medium": len(medium_points),
+                    "easy": len(easy_points)
+                },
             "difficult_topics": difficult_topics[:5],
-            "recent_activity": recent_count
+                "recent_activity": recent_count
         }
         
         return json.dumps(analysis, ensure_ascii=False, default=str)
@@ -189,10 +204,12 @@ llm = ChatOpenAI(
     model="gemini-2.5-pro",
     temperature=0.3,  # 降低温度以获得更一致的分析结果
     api_key=API_KEY,
-    base_url=API_BASE_URL
+    base_url=API_BASE_URL,
+    streaming=False  # 关闭流式输出避免闪烁
 )
 
 tools = [
+    list_all_sessions,
     get_learning_statistics,
     get_recent_learning_points,
     get_learning_points_by_topic,

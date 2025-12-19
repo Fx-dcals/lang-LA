@@ -5,18 +5,18 @@
 ## 🎯 功能概述
 
 - **计算代理** (`compute_agent.py`)：使用 NumPy 执行线性代数计算
-- **可视化代理** (`visual_agent.py`)：生成 2D 线性变换的可视化图像
+- **可视化代理** (`viz_agent.py`)：生成 2D 线性变换的可视化图像
 - **苏格拉底式教学代理** (`socratic_agent.py`)：通过提问引导学生学习，并记录学习点
 - **学习分析代理** (`analysis_agent.py`)：基于历史数据提供个性化学习分析和建议
-- **MySQL 数据库集成**：持久化存储学习点数据，支持历史分析和个性化建议
+- **PostgreSQL 数据库集成**：持久化存储学习点数据，支持历史分析和个性化建议
 - **LangGraph 集成**：通过 `langgraph.json` 配置文件暴露代理接口
 - **多模型支持**：兼容 OpenAI、DeepSeek 等 LLM 提供商
 
 ## 📋 系统要求
 
 - Python 3.13+（推荐使用 uv 进行包管理）
-- MySQL 5.7+ 或 MySQL 8.0+（用于存储学习点数据）
-- 有效的 LLM API 密钥（OpenAI 或 DeepSeek）
+- PostgreSQL 12+（用于存储学习点数据）
+- 有效的 LLM API 密钥（OpenAI、DeepSeek 或其他兼容 OpenAI API 的提供商）
 
 ## 🔧 安装与设置
 
@@ -46,13 +46,13 @@ uv sync
 source .venv/bin/activate
 ```
 
-### 3. 配置 MySQL 数据库
+### 3. 配置 PostgreSQL 数据库
 
 ```bash
-# 创建数据库（在 MySQL 中执行）
-mysql -u root -p
-CREATE DATABASE lang_la CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-EXIT;
+# 创建数据库（在 PostgreSQL 中执行）
+psql -U postgres
+CREATE DATABASE lang_la;
+\q
 ```
 
 ### 4. 配置环境变量
@@ -65,10 +65,10 @@ copy .env.example .env
 # API_KEY=your_api_key_here
 # API_BASE_URL=https://api.deepseek.com  # 或 https://api.openai.com/v1
 
-# 数据库配置
+# 数据库配置（PostgreSQL）
 # DB_HOST=localhost
-# DB_PORT=3306
-# DB_USER=root
+# DB_PORT=5432
+# DB_USER=postgres
 # DB_PASSWORD=your_password
 # DB_NAME=lang_la
 ```
@@ -91,21 +91,22 @@ python db/database.py
 ```bash
 # 确保在虚拟环境中
 # 启动 LangGraph 开发服务器
-langgraph serve
+langgraph dev --allow-blocking
 
 # 服务器将在 http://localhost:2024 启动
-# 可用的图端点：
-# - /compute-agent/playground
-# - /visual-agent/playground
-# - /socratic-agent/playground
-# - /analysis-agent/playground
+# LangGraph Studio 将在 http://localhost:8123 启动（可选）
+# 可用的代理端点：
+# - compute-agent
+# - viz-agent
+# - socratic-agent
+# - analysis-agent
 ```
 
 ### 生产模式
 
 ```bash
 # 使用生产配置启动
-langgraph serve --host 0.0.0.0 --port 2024 --workers 4
+langgraph serve --host 0.0.0.0 --port 2024
 ```
 
 ## 🔌 API 端点
@@ -129,7 +130,7 @@ langgraph serve --host 0.0.0.0 --port 2024 --workers 4
 
 ### 可视化代理
 
-- **端点**: `POST /visual-agent/invoke`
+- **端点**: `POST /viz-agent/invoke`
 - **描述**: 生成 2D 线性变换图像
 - **示例请求**:
 
@@ -158,11 +159,13 @@ langgraph serve --host 0.0.0.0 --port 2024 --workers 4
 - **端点**: `POST /analysis-agent/invoke`
 - **描述**: 基于历史数据提供个性化学习分析和建议
 - **功能**:
+  - 列出所有有学习记录的会话
   - 分析学生的学习统计信息（总记录数、难度分布、常见困惑点）
   - 获取最近的学习点记录
-  - 根据知识点搜索相关历史记录
+  - 根据知识点搜索相关历史记录（跨所有会话）
   - 深度分析学习模式和趋势
   - 提供个性化的学习建议
+  - 删除会话或单条学习记录
 
 **示例请求**:
 
@@ -171,11 +174,26 @@ langgraph serve --host 0.0.0.0 --port 2024 --workers 4
   "messages": [
     {
       "role": "user",
-      "content": "分析我的学习情况，thread_id是xxx"
+      "content": "列出所有学习会话"
     }
   ]
 }
 ```
+
+或
+
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "分析我的学习情况"
+    }
+  ]
+}
+```
+
+注意：如果提供 thread_id，会分析该会话；否则会列出所有会话供选择。
 
 ### 健康检查
 
@@ -210,7 +228,7 @@ RUN uv sync --frozen
 EXPOSE 2024
 
 # 启动服务
-CMD ["uv", "run", "langgraph", "serve", "--host", "0.0.0.0", "--port", "2024"]
+CMD ["uv", "run", "langgraph", "dev", "--host", "0.0.0.0", "--port", "2024", "--allow-blocking"]
 ```
 
 #### 2. 构建并运行
@@ -240,11 +258,11 @@ docker run -d \
 
 | 变量名 | 必填 | 默认值 | 描述 |
 |--------|------|---------|------|
-| `DB_HOST` | 否 | `localhost` | MySQL 主机地址 |
-| `DB_PORT` | 否 | `3306` | MySQL 端口 |
-| `DB_USER` | 否 | `root` | MySQL 用户名 |
-| `DB_PASSWORD` | 是 | - | MySQL 密码 |
-| `DB_NAME` | 否 | `lang_la` | MySQL 数据库名 |
+| `DB_HOST` | 否 | `localhost` | PostgreSQL 主机地址 |
+| `DB_PORT` | 否 | `5432` | PostgreSQL 端口 |
+| `DB_USER` | 否 | `postgres` | PostgreSQL 用户名 |
+| `DB_PASSWORD` | 是 | - | PostgreSQL 密码 |
+| `DB_NAME` | 否 | `lang_la` | PostgreSQL 数据库名 |
 
 ### LangSmith 配置（可选）
 
@@ -288,11 +306,11 @@ docker run -d \
 5. **数据库连接失败**
 
    ```bash
-   pymysql.err.OperationalError: (2003, "Can't connect to MySQL server")
+   psycopg.OperationalError: connection to server failed
    ```
 
    **解决方案**：
-   - 确保 MySQL 服务正在运行
+   - 确保 PostgreSQL 服务正在运行
    - 检查 `.env` 文件中的数据库配置是否正确
    - 确认数据库用户有足够的权限
    - 运行 `python db/database.py` 初始化数据库表
@@ -300,10 +318,21 @@ docker run -d \
 6. **数据库表不存在**
 
    ```bash
-   pymysql.err.ProgrammingError: (1146, "Table 'lang_la.learning_points' doesn't exist")
+   psycopg.errors.UndefinedTable: relation "learning_points" does not exist
    ```
 
    **解决方案**：运行 `python db/database.py` 初始化数据库表
+
+7. **Windows 文件锁定错误**
+
+   ```bash
+   FileExistsError: [WinError 183] 当文件已存在时，无法创建该文件
+   BlockingError: Blocking call to os.unlink
+   ```
+
+   **解决方案**：
+   - 删除 `.langgraph_api` 目录：`Remove-Item -Recurse -Force .langgraph_api`
+   - 使用 `--allow-blocking` 标志启动：`langgraph dev --allow-blocking`
 
 ## 🔄 更新与维护
 
